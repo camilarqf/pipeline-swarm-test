@@ -1,0 +1,318 @@
+pipeline{
+    agent any
+
+    environment{
+        buildId="${UUID.randomUUID().toString()}"
+        app=null
+        fullImageName='';
+        imageDefinition=''
+        containerDefinition=''
+        regionHomolog=null
+        regionGreen=null
+        regionBlue=null
+    }
+     
+    stages{ 
+
+        stage("Load parameters"){          
+
+            steps{
+                script{
+
+                    params=loadParameters();
+                    app=params.app;
+                    mainBranch=params.main_branch;
+                    imageDefinition=params.image_definition;
+                    containerDefinition=params.container_definition;
+                    integrationDefinition=params.integration_definition;
+                    regionHomolog=params.regions[0]
+                    regionGreen=params.regions[1];
+                    regionBlue=params.regions[2];
+                } 
+                wrap([$class: 'BuildUser']) {
+                    script {
+                        USER_ID = "${BUILD_USER}"
+                        }
+                }                             
+            }
+        }
+
+        stage("Build Image"){
+
+            steps{
+                script{
+
+                    fullImageName="${imageDefinition.name}:${buildId}";
+
+                     docker.withRegistry("http://${imageDefinition.registry_host}") {
+                         def customImage = docker.build("${fullImageName}", "-f ${imageDefinition.docker_file} .")
+                         customImage.push()
+                     }
+                }
+            }
+        }
+
+        stage("Deploy Homolog"){
+            
+            environment{
+                credentials=credentials("${regionHomolog.credential_id}");
+            }
+            
+            steps{              
+                
+                script{
+
+                    input message: "Start deploy ${regionHomolog.name}', ok: 'Confirm!"
+
+                    createDeployNotification(regionHomolog.name,regionHomolog.host,"iniciado");
+
+                    def remote=buildRemote(regionHomolog.host,regionHomolog.name,"$credentials_USR","$credentials_PSW")
+
+                    def env=extractEnvironmentVariables(regionHomolog.env_file);                    
+                   
+                    deploy(remote,containerDefinition.external_port,env);
+
+                    createDeployNotification(regionHomolog.name,regionHomolog.host,"finalizado");
+
+                }
+            }
+        }
+
+        stage("Deploy Green"){
+
+            when{
+                branch mainBranch
+            }
+            
+            environment{
+                credentials=credentials("${regionGreen.credential_id}");
+            }
+
+            steps{
+
+                script{
+                    
+                    input message: "Start deploy ${regionGreen.name}', ok: 'Confirm!"
+                    
+                    createDeployNotification(regionGreen.name,regionGreen.host,"iniciado");
+
+                    def externalPortTemp=containerDefinition.external_port + 100;
+
+                    def remote=buildRemote(regionGreen.host,regionGreen.name,"$credentials_USR","$credentials_PSW");
+
+                    def env=extractEnvironmentVariables(regionGreen.env_file);              
+                   
+                    deploy(remote,externalPortTemp,env);
+
+                    def healthCheckUri="http://${regionGreen.host}:${externalPortTemp}/${integrationDefinition.healt_check_endpoint}"
+                    
+                    createHealthCheckNotification(regionGreen.name,healthCheckUri)
+                }
+            }
+        }
+
+        stage("Rollout Green"){
+
+            when{
+                branch mainBranch
+            }
+            
+            environment{
+                credentials=credentials("${regionGreen.credential_id}");
+            }
+
+            steps{
+
+                script{
+                    
+                    input message: "${regionGreen.name} is Health?', ok: 'Yes!"
+
+                    def remote=buildRemote(regionGreen.host,regionGreen.name,"$credentials_USR","$credentials_PSW");
+
+                    def env=extractEnvironmentVariables(regionGreen.env_file);
+                   
+                    deploy(remote,containerDefinition.external_port,env);
+
+                    createDeployNotification(regionGreen.name,regionGreen.host,"finalizado");
+
+                }
+            }
+        }
+
+        stage("Deploy Blue"){
+
+            when{
+                branch mainBranch
+            }
+            
+            environment{
+                credentials=credentials("${regionBlue.credential_id}");
+            }
+
+            steps{
+
+                script{
+
+                    createDeployNotification(regionBlue.name,regionBlue.host,"iniciado");
+
+                    def externalPortTemp=containerDefinition.external_port + 100;
+
+                    def remote=buildRemote(regionBlue.host,regionBlue.name,"$credentials_USR","$credentials_PSW");
+
+                    def env=extractEnvironmentVariables(regionBlue.env_file);
+                   
+                    deploy(remote,externalPortTemp,env);
+
+                    def healthCheckUri="http://${regionBlue.host}:${externalPortTemp}/${integrationDefinition.healt_check_endpoint}";
+                    
+                    createHealthCheckNotification(regionBlue.name,healthCheckUri);
+
+                }
+            }
+        }
+
+        stage("Rollout Blue"){
+
+            when{
+                branch mainBranch
+            }
+            
+            environment{
+                credentials=credentials("${regionBlue.credential_id}");
+            }
+
+            steps{
+                script{
+                    
+                    input message: "${regionBlue.name} is Health?', ok: 'Yes!"
+                    
+                    def remote=buildRemote(regionBlue.host,regionBlue.name,"$credentials_USR","$credentials_PSW");
+
+                    def env=extractEnvironmentVariables(regionBlue.env_file);
+                   
+                    deploy(remote,containerDefinition.external_port,env);
+
+                    createDeployNotification(regionBlue.name,regionBlue.host,"finalizado");
+                }
+            }
+        }
+    }
+
+    post{
+
+        failure{
+            createFailureNotification();
+        }
+
+       aborted {
+           createAbortNotification();            
+        }
+    }   
+}
+
+def deploy(remote,externalPort,env){
+
+    def containerExists=sshCommand remote: remote, command: "docker ps --filter 'name=${containerDefinition.name}' -q";
+    
+    if(containerExists){
+        sshCommand remote: remote, command: "docker rm -f ${containerDefinition.name}"
+    }
+
+    def volumeFlag="";
+     
+    if(containerDefinition.volume){
+         volumeFlag="-v ${containerDefinition.volume}"}
+
+    sshCommand remote: remote, command: 
+        "docker run -d --restart unless-stopped -p ${externalPort}:${containerDefinition.internal_port} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} -h=${remote.hostname} ${volumeFlag} ${env} --name ${containerDefinition.name} ${imageDefinition.registry_host}/${fullImageName}"
+}
+def extractEnvironmentVariables(envFile){
+
+     if(!envFile) {
+         return "";
+     }
+
+      def content = readYaml (file: envFile);
+
+      def concatEnv="";
+
+      for(item in content.environment_variables){
+           concatEnv+="-e ${item.name}='${item.value}' ";
+      }
+
+      return concatEnv;
+}
+
+def buildRemote(host,regionName,user,password){
+    
+    def dockerRemote=[:]
+    dockerRemote.name = 'remote'
+    dockerRemote.host = host
+    dockerRemote.hostname="${containerDefinition.name}-region-${regionName.toLowerCase()}"
+    dockerRemote.user= user
+    dockerRemote.password= password
+    dockerRemote.allowAnyHosts = true
+
+    return dockerRemote;
+}
+
+def loadParameters(){
+  def params = readYaml (file: '.jenkins-pipelines/deployment.params.yml')
+  return params;
+}
+
+def createDeployNotification(regionName,host,status){
+    
+    def notification="""
+ ```
+user: ${USER_ID}
+build id: ${buildId}
+build number: ${env.BUILD_NUMBER}
+branch: ${env.GIT_BRANCH}
+host: ${host}
+image name: ${fullImageName}
+container definition
+    name: ${containerDefinition.name}
+    memory: ${containerDefinition.memory}
+    external_port: ${containerDefinition.external_port}
+    log_max_file: ${containerDefinition.log_max_file}
+    log_max_size: ${containerDefinition.log_max_size}
+    volume: ${containerDefinition.volume}
+```
+"""
+    notifyOnDiscord("Deploy Region ${regionName} - ${status}",notification,integrationDefinition.discord_web_hook_notification)
+}
+
+def createHealthCheckNotification(regionName,healthCheckUri){
+    
+    def notification="""
+### O deploy na region ${regionName} foi executado.
+
+> Para validar, execute um health check usando [este link](${healthCheckUri}) 
+
+ApÃ³s validar o teste, acesse a [pipeline](${env.BUILD_URL}) e confirme o *rollout*.
+    """
+
+    notifyOnDiscord("Deploy Region ${regionName}",notification,integrationDefinition.discord_web_hook_notification)
+}
+
+def createFailureNotification(){
+    
+    def notification="### A execuÃ§Ã£o da pipeline ${env.BUILD_URL} falhou."
+
+    notifyOnDiscord("Falhou",notification,integrationDefinition.discord_web_hook_notification)
+}
+
+def createAbortNotification(){
+    
+    def notification="### A execuÃ§Ã£o da pipeline ${env.BUILD_URL} foi cancelada."
+
+    notifyOnDiscord("Cancelou",notification,integrationDefinition.discord_web_hook_notification)
+}
+
+def notifyOnDiscord(title,description,webhookUrl) {
+    
+    def curlScript="curl -X POST ${webhookUrl} -s -H 'Content-Type: application/x-www-form-urlencoded' -d 'username=${app.name} - ${title}&content=${description}' "
+
+    sh(script:curlScript, returnStdout: false)
+}
