@@ -232,7 +232,7 @@ def deployWithSwarm(remote, externalPort, env) {
     }
 
     sshCommand(remote: remote, command:
-        "sudo docker service create --name ${containerDefinition.name} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas 1 --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+        "sudo docker service create --name ${containerDefinition.name} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas {containerDefinition.replicas} --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
 }
 
 def removeTemporaryService(remote) {
