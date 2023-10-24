@@ -189,16 +189,16 @@ pipeline {
             }
         }
 
-        post {
-            failure {
-                createFailureNotification()
-            }
-
-            aborted {
-                createAbortNotification()
-            }
-        }
     }
+    post {
+        failure {
+            createFailureNotification()
+        }
+
+        aborted {
+            createAbortNotification()
+        }
+    }  
 }
 
 def deploy(remote,externalPort,env){
