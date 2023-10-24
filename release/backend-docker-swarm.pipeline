@@ -219,10 +219,10 @@ def deploy(remote,externalPort,env){
 
 // Função adaptada para deploy com Docker Swarm
 def deployWithSwarm(remote, externalPort, env) {
-    def serviceExists = sshCommand(remote: remote, command: "docker service ls --filter 'name=${containerDefinition.name}' -q")
+    def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${containerDefinition.name}' -q")
 
     if (serviceExists) {
-        sshCommand(remote: remote, command: "docker service rm ${containerDefinition.name}")
+        sshCommand(remote: remote, command: "sudo docker service rm ${containerDefinition.name}")
     }
 
     def volumeFlag = ""
@@ -232,18 +232,18 @@ def deployWithSwarm(remote, externalPort, env) {
     }
 
     sshCommand(remote: remote, command:
-        "docker service create --name ${containerDefinition.name} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas 1 --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+        "sudo docker service create --name ${containerDefinition.name} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas 1 --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
 }
 
 def removeTemporaryService(remote) {
     def temporaryServiceName = "${containerDefinition.name}-test"
 
     // Verificar se o serviço temporário existe
-    def serviceExists = sshCommand(remote: remote, command: "docker service ls --filter 'name=${temporaryServiceName}' -q")
+    def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${temporaryServiceName}' -q")
 
     // Se existir, remova-o
     if (serviceExists) {
-        sshCommand(remote: remote, command: "docker service rm ${temporaryServiceName}")
+        sshCommand(remote: remote, command: "sudo docker service rm ${temporaryServiceName}")
     }
 }
 
