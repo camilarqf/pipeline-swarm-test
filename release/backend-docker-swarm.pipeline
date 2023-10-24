@@ -98,7 +98,7 @@ pipeline {
                     for (host in regionProd.manager_hosts) {
                         try {
                             def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
-                            deployWithSwarm(remote, externalPortTemp, env)
+                            deployTemporaryServiceWithSwarm(remote, externalPortTemp, env)
                             connectedHost = host
                             connected = true
                             break
@@ -235,6 +235,27 @@ def deployWithSwarm(remote, externalPort, env) {
         // Crie um novo serviço
         sshCommand(remote: remote, command:
             "sudo docker service create --name ${containerDefinition.name} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas} --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+    }
+}
+
+def deployTemporaryServiceWithSwarm(remote, externalPort, env) {
+    def temporaryServiceName = "${containerDefinition.name}-test"
+
+    def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${temporaryServiceName}' -q")
+
+    def volumeFlag = ""
+    if (containerDefinition.volume) {
+         volumeFlag = "--mount type=volume,src=${containerDefinition.volume},dst=${containerDefinition.volume}"
+    }
+
+    if (serviceExists) {
+        // Atualize o serviço temporário existente
+        sshCommand(remote: remote, command:
+            "sudo docker service update --name ${temporaryServiceName} --publish-add published=${externalPort},target=${containerDefinition.internal_port} --constraint-add 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+    } else {
+        // Crie um novo serviço temporário
+        sshCommand(remote: remote, command:
+            "sudo docker service create --name ${temporaryServiceName} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas} --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
     }
 }
 
