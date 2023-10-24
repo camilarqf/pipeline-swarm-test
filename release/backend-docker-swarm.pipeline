@@ -171,10 +171,10 @@ pipeline{
 
 def deploy(remote,externalPort,env){
 
-    def containerExists=sshCommand remote: remote, command: "docker ps --filter 'name=${containerDefinition.name}' -q";
+    def containerExists=sshCommand remote: remote, command: "sudo docker ps --filter 'name=${containerDefinition.name}' -q";
     
     if(containerExists){
-        sshCommand remote: remote, command: "docker rm -f ${containerDefinition.name}"
+        sshCommand remote: remote, command: "sudo docker rm -f ${containerDefinition.name}"
     }
 
     def volumeFlag="";
@@ -183,7 +183,7 @@ def deploy(remote,externalPort,env){
          volumeFlag="-v ${containerDefinition.volume}"}
 
     sshCommand remote: remote, command: 
-        "docker run -d --restart unless-stopped -p ${externalPort}:${containerDefinition.internal_port} --memory ${containerDefinition.memory} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} -h=${remote.hostname} ${volumeFlag} ${env} --name ${containerDefinition.name} ${imageDefinition.registry_host}/${fullImageName}"
+        "sudo docker run -d --restart unless-stopped -p ${externalPort}:${containerDefinition.internal_port} --memory ${containerDefinition.memory} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} -h=${remote.hostname} ${volumeFlag} ${env} --name ${containerDefinition.name} ${imageDefinition.registry_host}/${fullImageName}"
 }
 
 // Função adaptada para deploy com Docker Swarm
