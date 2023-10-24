@@ -101,12 +101,27 @@ pipeline{
                     steps{
                         script{
                             def externalPortTemp = containerDefinition.external_port + 100
-
-                            def remote = buildRemote(regionProd.manager_hosts, regionProd.name, "$credentials_USR", "$credentials_PSW")
                             def env = extractEnvironmentVariables(regionProd.env_file)
-                            deployWithSwarm(remote, externalPortTemp, env)
+                            def connectedHost = ""
+                            def connected = false
 
-                            def healthCheckUri = "http://${regionProd.manager_hosts}:${externalPortTemp}/${integrationDefinition.healt_check_endpoint}"
+                            for (host in regionProd.manager_hosts) {
+                                try {
+                                    def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
+                                    deployWithSwarm(remote, externalPortTemp, env)
+                                    connectedHost = host
+                                    connected = true
+                                    break
+                                } catch (com.jcraft.jsch.JSchException e) {
+                                    echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
+                                }
+                            }
+
+                            if (!connected) {
+                                error "Não foi possível conectar-se a nenhum host."
+                            }
+
+                            def healthCheckUri = "http://${connectedHost}:${externalPortTemp}/${integrationDefinition.healt_check_endpoint}"
                             createHealthCheckNotification(regionProd.name, healthCheckUri)
                         }
                     }
@@ -132,15 +147,31 @@ pipeline{
                     }
                     steps{
                         script{
-                            def remote = buildRemote(regionProd.manager_hosts, regionGreen.name, "$credentials_USR", "$credentials_PSW")
                             def env = extractEnvironmentVariables(regionProd.env_file)
+                            def connectedHost = ""
+                            def connected = false
 
-                            deployWithSwarm(remote, containerDefinition.external_port, env) // Note: This will now overwrite the main service
+                            for (host in regionProd.manager_hosts) {
+                                try {
+                                    def remote = buildRemote(host, regionGreen.name, "$credentials_USR", "$credentials_PSW")
+                                    deployWithSwarm(remote, containerDefinition.external_port, env) // Note: This will now overwrite the main service
+                                    connectedHost = host
+                                    connected = true
+                                    break
+                                } catch (com.jcraft.jsch.JSchException e) {
+                                    echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
+                                }
+                            }
 
-                            createDeployNotification(regionProd.name, regionProd.manager_hosts, "completed")
+                            if (!connected) {
+                                error "Não foi possível conectar-se a nenhum host durante o Production Rollout."
+                            }
+
+                            createDeployNotification(regionProd.name, connectedHost, "completed")
                         }
                     }
                 }
+
 
                 stage("Cleanup"){
                     when{
