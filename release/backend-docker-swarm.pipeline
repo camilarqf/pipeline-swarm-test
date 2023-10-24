@@ -169,6 +169,23 @@ pipeline{
             }
         }
 
+def deploy(remote,externalPort,env){
+
+    def containerExists=sshCommand remote: remote, command: "docker ps --filter 'name=${containerDefinition.name}' -q";
+    
+    if(containerExists){
+        sshCommand remote: remote, command: "docker rm -f ${containerDefinition.name}"
+    }
+
+    def volumeFlag="";
+     
+    if(containerDefinition.volume){
+         volumeFlag="-v ${containerDefinition.volume}"}
+
+    sshCommand remote: remote, command: 
+        "docker run -d --restart unless-stopped -p ${externalPort}:${containerDefinition.internal_port} --memory ${containerDefinition.memory} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} -h=${remote.hostname} ${volumeFlag} ${env} --name ${containerDefinition.name} ${imageDefinition.registry_host}/${fullImageName}"
+}
+
 // Função adaptada para deploy com Docker Swarm
 def deployWithSwarm(remote, externalPort, env) {
     def serviceExists = sshCommand(remote: remote, command: "docker service ls --filter 'name=${containerDefinition.name}' -q")
