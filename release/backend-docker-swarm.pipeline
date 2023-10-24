@@ -1,216 +1,205 @@
-pipeline{
+pipeline {
     agent any
 
-    environment{
-        buildId="${UUID.randomUUID().toString()}"
-        app=null
-        fullImageName='';
-        imageDefinition=''
-        containerDefinition=''
-        integrationDefinition=null
-        regionHomolog=null
-        regionGreen=null
-        regionBlue=null
+    environment {
+        buildId = "${UUID.randomUUID().toString()}"
+        app = null
+        fullImageName = '';
+        imageDefinition = ''
+        containerDefinition = ''
+        integrationDefinition = null
+        regionHomolog = null
+        regionGreen = null
+        regionBlue = null
     }
 
-    stages{
-
-        stage("Start"){
-            steps{
+    stages {
+        stage("Start") {
+            steps {
                 timeout(time: 15, unit: 'SECONDS') {
-                    script{
-                       input message: "Start pipeline?', ok: 'Confirm!"
+                    script {
+                        input message: "Start pipeline?', ok: 'Confirm!"
                     }
-
                 }
             }
-
         }
 
-        stage("Load parameters"){
-
-            steps{
-                script{
-
-                    params=loadParameters();
-                    app=params.app;
-                    mainBranch=params.main_branch;
-                    imageDefinition=params.image_definition;
-                    containerDefinition=params.container_definition;
-                    integrationDefinition=params.integration_definition;
-                    regionHomolog=params.regions[0]
-                    regionProd=params.regions[1];
+        stage("Load parameters") {
+            steps {
+                script {
+                    params = loadParameters()
+                    app = params.app
+                    mainBranch = params.main_branch
+                    imageDefinition = params.image_definition
+                    containerDefinition = params.container_definition
+                    integrationDefinition = params.integration_definition
+                    regionHomolog = params.regions[0]
+                    regionProd = params.regions[1]
                 }
                 wrap([$class: 'BuildUser']) {
                     script {
                         USER_ID = "${BUILD_USER}"
-                        }
+                    }
                 }
             }
         }
 
-        stage("Build Image"){
+        stage("Build Image") {
+            steps {
+                script {
+                    fullImageName = "${imageDefinition.name}:${buildId}"
 
-            steps{
-                script{
-
-                    fullImageName="${imageDefinition.name}:${buildId}";
-
-                     docker.withRegistry("http://${imageDefinition.registry_host}") {
-                         def customImage = docker.build("${fullImageName}", "-f ${imageDefinition.docker_file} .")
-                         customImage.push()
-                     }
+                    docker.withRegistry("http://${imageDefinition.registry_host}") {
+                        def customImage = docker.build("${fullImageName}", "-f ${imageDefinition.docker_file} .")
+                        customImage.push()
+                    }
                 }
             }
         }
 
-        stage("Deploy Homolog"){
-
-            environment{
-                credentials=credentials("${regionHomolog.credential_id}");
+        stage("Deploy Homolog") {
+            environment {
+                credentials = credentials("${regionHomolog.credential_id}")
             }
 
-            steps{
-                 timeout(time: 5, unit: 'MINUTES') {
-                    script{
-
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
                         input message: "Start deploy ${regionHomolog.name}', ok: 'Confirm!"
 
-                        createDeployNotification(regionHomolog.name,regionHomolog.host,"iniciado");
+                        createDeployNotification(regionHomolog.name, regionHomolog.host, "iniciado")
 
-                        def remote=buildRemote(regionHomolog.host,regionHomolog.name,"$credentials_USR","$credentials_PSW")
+                        def remote = buildRemote(regionHomolog.host, regionHomolog.name, "$credentials_USR", "$credentials_PSW")
 
-                        def env=extractEnvironmentVariables(regionHomolog.env_file);
+                        def env = extractEnvironmentVariables(regionHomolog.env_file)
 
-                        deploy(remote,containerDefinition.external_port,env);
+                        deploy(remote, containerDefinition.external_port, env)
 
-                        createDeployNotification(regionHomolog.name,regionHomolog.host,"finalizado");
-
+                        createDeployNotification(regionHomolog.name, regionHomolog.host, "finalizado")
                     }
-                 }
+                }
             }
         }
 
-        stage("Temporary Production Deployment"){
-                    when{
-                        branch mainBranch
-                    }
-                    environment{
-                        credentials=credentials("${regionProd.credential_id}")
-                    }
-                    steps{
-                        script{
-                            def externalPortTemp = containerDefinition.external_port + 100
-                            def env = extractEnvironmentVariables(regionProd.env_file)
-                            def connectedHost = ""
-                            def connected = false
+        stage("Temporary Production Deployment") {
+            when {
+                branch mainBranch
+            }
+            environment {
+                credentials = credentials("${regionProd.credential_id}")
+            }
+            steps {
+                script {
+                    def externalPortTemp = containerDefinition.external_port + 100
+                    def env = extractEnvironmentVariables(regionProd.env_file)
+                    def connectedHost = ""
+                    def connected = false
 
-                            for (host in regionProd.manager_hosts) {
-                                try {
-                                    def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
-                                    deployWithSwarm(remote, externalPortTemp, env)
-                                    connectedHost = host
-                                    connected = true
-                                    break
-                                } catch (com.jcraft.jsch.JSchException e) {
-                                    echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
-                                }
-                            }
-
-                            if (!connected) {
-                                error "Não foi possível conectar-se a nenhum host."
-                            }
-
-                            def healthCheckUri = "http://${connectedHost}:${externalPortTemp}/${integrationDefinition.healt_check_endpoint}"
-                            createHealthCheckNotification(regionProd.name, healthCheckUri)
+                    for (host in regionProd.manager_hosts) {
+                        try {
+                            def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
+                            deployWithSwarm(remote, externalPortTemp, env)
+                            connectedHost = host
+                            connected = true
+                            break
+                        } catch (com.jcraft.jsch.JSchException e) {
+                            echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
                         }
                     }
-                }
 
-                stage("Validate Temporary Service"){
-                    when{
-                        branch mainBranch
+                    if (!connected) {
+                        error "Não foi possível conectar-se a nenhum host."
                     }
-                    steps{
-                        script{
-                            input message: "${regionProd.name} is Healthy?", ok: "Yes!"
-                        }
-                    }
-                }
 
-                stage("Production Rollout"){
-                    when{
-                        branch mainBranch
-                    }
-                    environment{
-                        credentials=credentials("${regionProd.credential_id}")
-                    }
-                    steps{
-                        script{
-                            def env = extractEnvironmentVariables(regionProd.env_file)
-                            def connectedHost = ""
-                            def connected = false
-
-                            for (host in regionProd.manager_hosts) {
-                                try {
-                                    def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
-                                    deployWithSwarm(remote, containerDefinition.external_port, env) // Note: This will now overwrite the main service
-                                    connectedHost = host
-                                    connected = true
-                                    break
-                                } catch (com.jcraft.jsch.JSchException e) {
-                                    echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
-                                }
-                            }
-
-                            if (!connected) {
-                                error "Não foi possível conectar-se a nenhum host durante o Production Rollout."
-                            }
-
-                            createDeployNotification(regionProd.name, connectedHost, "completed")
-                        }
-                    }
-                }
-
-
-                stage("Cleanup"){
-    when{
-        branch mainBranch
-    }
-    environment{
-        credentials=credentials("${regionProd.credential_id}")
-    }
-    steps{
-        script{
-            boolean connected = false
-            for (host in regionProd.manager_hosts) {
-                try {
-                    def remote = buildRemote(host, regionProd.name, credentials_USR, credentials_PSW)
-                    removeTemporaryService(remote)
-                    connected = true
-                    break
-                } catch (com.jcraft.jsch.JSchException e) {
-                    echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
+                    def healthCheckUri = "http://${connectedHost}:${externalPortTemp}/${integrationDefinition.healt_check_endpoint}"
+                    createHealthCheckNotification(regionProd.name, healthCheckUri)
                 }
             }
-            if (!connected) {
-                error "Não foi possível conectar a nenhum dos hosts."
+        }
+
+        stage("Validate Temporary Service") {
+            when {
+                branch mainBranch
+            }
+            steps {
+                script {
+                    input message: "${regionProd.name} is Healthy?", ok: "Yes!"
+                }
+            }
+        }
+
+        stage("Production Rollout") {
+            when {
+                branch mainBranch
+            }
+            environment {
+                credentials = credentials("${regionProd.credential_id}")
+            }
+            steps {
+                script {
+                    def env = extractEnvironmentVariables(regionProd.env_file)
+                    def connectedHost = ""
+                    def connected = false
+
+                    for (host in regionProd.manager_hosts) {
+                        try {
+                            def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
+                            deployWithSwarm(remote, containerDefinition.external_port, env) // Note: This will now overwrite the main service
+                            connectedHost = host
+                            connected = true
+                            break
+                        } catch (com.jcraft.jsch.JSchException e) {
+                            echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
+                        }
+                    }
+
+                    if (!connected) {
+                        error "Não foi possível conectar-se a nenhum host durante o Production Rollout."
+                    }
+
+                    createDeployNotification(regionProd.name, connectedHost, "completed")
+                }
+            }
+        }
+
+        stage("Cleanup") {
+            when {
+                branch mainBranch
+            }
+            environment {
+                credentials = credentials("${regionProd.credential_id}")
+            }
+            steps {
+                script {
+                    boolean connected = false
+                    for (host in regionProd.manager_hosts) {
+                        try {
+                            def remote = buildRemote(host, regionProd.name, credentials_USR, credentials_PSW)
+                            removeTemporaryService(remote)
+                            connected = true
+                            break
+                        } catch (com.jcraft.jsch.JSchException e) {
+                            echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
+                        }
+                    }
+                    if (!connected) {
+                        error "Não foi possível conectar a nenhum dos hosts."
+                    }
+                }
+            }
+        }
+
+        post {
+            failure {
+                createFailureNotification()
+            }
+
+            aborted {
+                createAbortNotification()
             }
         }
     }
 }
-
-
-            post{
-                failure{
-                    createFailureNotification()
-                }
-
-                aborted {
-                    createAbortNotification()
-                }
-            }
-        }
 
 def deploy(remote,externalPort,env){
 
