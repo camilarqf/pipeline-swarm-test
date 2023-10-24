@@ -222,19 +222,22 @@ def deploy(remote,externalPort,env){
 def deployWithSwarm(remote, externalPort, env) {
     def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${containerDefinition.name}' -q")
 
-    if (serviceExists) {
-        sshCommand(remote: remote, command: "sudo docker service rm ${containerDefinition.name}")
-    }
-
     def volumeFlag = ""
-
     if (containerDefinition.volume) {
          volumeFlag = "--mount type=volume,src=${containerDefinition.volume},dst=${containerDefinition.volume}"
     }
 
-    sshCommand(remote: remote, command:
-        "sudo docker service create --name ${containerDefinition.name} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas} --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+    if (serviceExists) {
+        // Atualize o serviço existente
+        sshCommand(remote: remote, command:
+            "sudo docker service update --name ${containerDefinition.name} --publish-add published=${externalPort},target=${containerDefinition.internal_port} --constraint-add 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+    } else {
+        // Crie um novo serviço
+        sshCommand(remote: remote, command:
+            "sudo docker service create --name ${containerDefinition.name} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas} --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+    }
 }
+
 
 def removeTemporaryService(remote) {
     def temporaryServiceName = "${containerDefinition.name}-test"
