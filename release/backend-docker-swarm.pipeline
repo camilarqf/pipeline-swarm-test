@@ -230,11 +230,11 @@ def deployWithSwarm(remote, externalPort, env) {
     if (serviceExists) {
         // Atualize o serviço existente
         sshCommand(remote: remote, command:
-            "sudo docker service update --name ${containerDefinition.name} --publish-add published=${externalPort},target=${containerDefinition.internal_port} --constraint-add 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+            "sudo docker service update --name ${containerDefinition.name} --publish-add published=${externalPort},target=${containerDefinition.internal_port}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
     } else {
         // Crie um novo serviço
         sshCommand(remote: remote, command:
-            "sudo docker service create --name ${containerDefinition.name} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas} --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+            "sudo docker service create --name ${containerDefinition.name} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
     }
 }
 
@@ -251,11 +251,11 @@ def deployTemporaryServiceWithSwarm(remote, externalPort, env) {
     if (serviceExists) {
         // Atualize o serviço temporário existente
         sshCommand(remote: remote, command:
-            "sudo docker service update --name ${temporaryServiceName} --publish-add published=${externalPort},target=${containerDefinition.internal_port} --constraint-add 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+            "sudo docker service update --name ${temporaryServiceName} --publish-add published=${externalPort},target=${containerDefinition.internal_port}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
     } else {
         // Crie um novo serviço temporário
         sshCommand(remote: remote, command:
-            "sudo docker service create --name ${temporaryServiceName} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas} --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+            "sudo docker service create --name ${temporaryServiceName} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
     }
 }
 
