@@ -244,7 +244,7 @@ def deployTemporaryServiceWithSwarm(remote, externalPort, env) {
     def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${temporaryServiceName}' -q")
 
     if (serviceExists) {
-        sshCommand(remote: remote, command: "docker service rm ${temporaryServiceName}")
+        sshCommand(remote: remote, command: "sudo docker service rm ${temporaryServiceName}")
     }
 
     def volumeFlag = ""
@@ -254,7 +254,7 @@ def deployTemporaryServiceWithSwarm(remote, externalPort, env) {
 
     
     sshCommand(remote: remote, command: 
-        "docker service create --name ${temporaryServiceName} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+        "sudo docker service create --name ${temporaryServiceName} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
 }
 
 
