@@ -230,7 +230,7 @@ def deployWithSwarm(remote, externalPort, env) {
     if (serviceExists) {
         // Atualize o serviço existente
         sshCommand(remote: remote, command:
-            "sudo docker service update --name ${containerDefinition.name} --publish-add published=${externalPort},target=${containerDefinition.internal_port}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+            "sudo docker service update ${containerDefinition.name} --publish-add published=${externalPort},target=${containerDefinition.internal_port}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
     } else {
         // Crie um novo serviço
         sshCommand(remote: remote, command:
