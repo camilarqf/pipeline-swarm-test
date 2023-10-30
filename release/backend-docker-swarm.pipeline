@@ -117,13 +117,13 @@ def deployToRegion(region) {
     timeout(time: 5, unit: 'MINUTES') {
         script {
             input message: "Start deploy ${region.name}', ok: 'Confirm!"
-            createNotification("Deploy Region ${region.name}", "iniciado")
+            createDeployNotification("Deploy Region ${region.name}", "iniciado")
             
             def remote = connectToRegion(region)
             def env = extractEnvironmentVariables(region.env_file)
 
             deploy(remote, containerDefinition.external_port, env)
-            createNotification("Deploy Region ${region.name}", "finalizado")
+            createDeployNotification("Deploy Region ${region.name}", "finalizado")
         }
     }
 }
@@ -161,7 +161,7 @@ def deployToRegionWithSwarm(region) {
     def remote = connectToRegion(region)
     
     deployWithSwarm(remote, containerDefinition.external_port, env)
-    createNotification("Deploy Region ${region.name}", "completed")
+    createDeployNotification("Deploy Region ${region.name}", "completed")
 }
 
 def cleanupTemporaryService(region) {
