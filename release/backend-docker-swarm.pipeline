@@ -58,26 +58,8 @@ pipeline {
         }
 
         stage("Deploy Homolog") {
-            environment {
-                credentials = credentials("${regionHomolog.credential_id}")
-            }
-
             steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    script {
-                        input message: "Start deploy ${regionHomolog.name}', ok: 'Confirm!"
-
-                        createDeployNotification(regionHomolog.name, regionHomolog.host, "iniciado")
-
-                        def remote = buildRemote(regionHomolog.host, regionHomolog.name, "$credentials_USR", "$credentials_PSW")
-
-                        def env = extractEnvironmentVariables(regionHomolog.env_file)
-
-                        deploy(remote, containerDefinition.external_port, env)
-
-                        createDeployNotification(regionHomolog.name, regionHomolog.host, "finalizado")
-                    }
-                }
+                deployToRegion(regionHomolog)
             }
         }
 
@@ -85,35 +67,8 @@ pipeline {
             when {
                 branch mainBranch
             }
-            environment {
-                credentials = credentials("${regionProd.credential_id}")
-            }
             steps {
-                script {
-                    def externalPortTemp = containerDefinition.external_port + 100
-                    def env = extractEnvironmentVariables(regionProd.env_file)
-                    def connectedHost = ""
-                    def connected = false
-
-                    for (host in regionProd.manager_hosts) {
-                        try {
-                            def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
-                            deployTemporaryServiceWithSwarm(remote, externalPortTemp, env)
-                            connectedHost = host
-                            connected = true
-                            break
-                        } catch (com.jcraft.jsch.JSchException e) {
-                            echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
-                        }
-                    }
-
-                    if (!connected) {
-                        error "Não foi possível conectar-se a nenhum host."
-                    }
-
-                    def healthCheckUri = "http://${connectedHost}:${externalPortTemp}/${integrationDefinition.healt_check_endpoint}"
-                    createHealthCheckNotification(regionProd.name, healthCheckUri)
-                }
+                deployTemporaryToRegion(regionProd)
             }
         }
 
@@ -132,33 +87,8 @@ pipeline {
             when {
                 branch mainBranch
             }
-            environment {
-                credentials = credentials("${regionProd.credential_id}")
-            }
             steps {
-                script {
-                    def env = extractEnvironmentVariables(regionProd.env_file)
-                    def connectedHost = ""
-                    def connected = false
-
-                    for (host in regionProd.manager_hosts) {
-                        try {
-                            def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
-                            deployWithSwarm(remote, containerDefinition.external_port, env) // Note: This will now overwrite the main service
-                            connectedHost = host
-                            connected = true
-                            break
-                        } catch (com.jcraft.jsch.JSchException e) {
-                            echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
-                        }
-                    }
-
-                    if (!connected) {
-                        error "Não foi possível conectar-se a nenhum host durante o Production Rollout."
-                    }
-
-                    createDeployNotification(regionProd.name, connectedHost, "completed")
-                }
+                deployToRegionWithSwarm(regionProd)
             }
         }
 
@@ -166,26 +96,8 @@ pipeline {
             when {
                 branch mainBranch
             }
-            environment {
-                credentials = credentials("${regionProd.credential_id}")
-            }
             steps {
-                script {
-                    boolean connected = false
-                    for (host in regionProd.manager_hosts) {
-                        try {
-                            def remote = buildRemote(host, regionProd.name, credentials_USR, credentials_PSW)
-                            removeTemporaryService(remote)
-                            connected = true
-                            break
-                        } catch (com.jcraft.jsch.JSchException e) {
-                            echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
-                        }
-                    }
-                    if (!connected) {
-                        error "Não foi possível conectar a nenhum dos hosts."
-                    }
-                }
+                cleanupTemporaryService(regionProd)
             }
         }
 
@@ -199,6 +111,21 @@ pipeline {
             createAbortNotification()
         }
     }  
+}
+
+def deployToRegion(region) {
+    timeout(time: 5, unit: 'MINUTES') {
+        script {
+            input message: "Start deploy ${region.name}', ok: 'Confirm!"
+            createNotification("Deploy Region ${region.name}", "iniciado")
+            
+            def remote = connectToRegion(region)
+            def env = extractEnvironmentVariables(region.env_file)
+
+            deploy(remote, containerDefinition.external_port, env)
+            createNotification("Deploy Region ${region.name}", "finalizado")
+        }
+    }
 }
 
 def deploy(remote,externalPort,env){
@@ -218,56 +145,47 @@ def deploy(remote,externalPort,env){
         "sudo docker run -d --restart unless-stopped -p ${externalPort}:${containerDefinition.internal_port} --memory ${containerDefinition.memory} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} -h=${remote.hostname} ${volumeFlag} ${env} --name ${containerDefinition.name} ${imageDefinition.registry_host}/${fullImageName}"
 }
 
-// Função adaptada para deploy com Docker Swarm
-def deployWithSwarm(remote, externalPort, env) {
-    def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${containerDefinition.name}' -q")
+def deployTemporaryToRegion(region) {
+    def externalPortTemp = containerDefinition.external_port + 100
+    def env = extractEnvironmentVariables(region.env_file)
 
-    def volumeFlag = ""
-    if (containerDefinition.volume) {
-         volumeFlag = "--mount type=volume,src=${containerDefinition.volume},dst=${containerDefinition.volume}"
-    }
-
-    if (serviceExists) {
-        // Atualize o serviço existente
-        sshCommand(remote: remote, command:
-            "sudo docker service update ${containerDefinition.name} --image ${imageDefinition.registry_host}/${fullImageName}")
-    } else {
-        // Crie um novo serviço
-        sshCommand(remote: remote, command:
-            "sudo docker service create --name ${containerDefinition.name} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
-    }
-}
-
-def deployTemporaryServiceWithSwarm(remote, externalPort, env) {
-    def temporaryServiceName = "${containerDefinition.name}-test"
-
-    def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${temporaryServiceName}' -q")
-
-    if (serviceExists) {
-        sshCommand(remote: remote, command: "sudo docker service rm ${temporaryServiceName}")
-    }
-
-    def volumeFlag = ""
-    if (containerDefinition.volume) {
-         volumeFlag = "--mount type=volume,src=${containerDefinition.volume},dst=${containerDefinition.volume}"
-    }
-
+    def remote = connectToRegion(region)
+    deployTemporaryServiceWithSwarm(remote, externalPortTemp, env)
     
-    sshCommand(remote: remote, command: 
-        "sudo docker service create --name ${temporaryServiceName} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+    def healthCheckUri = "http://${remote.host}:${externalPortTemp}/${integrationDefinition.healt_check_endpoint}"
+    createHealthCheckNotification(region.name, healthCheckUri)
 }
 
+def deployToRegionWithSwarm(region) {
+    def env = extractEnvironmentVariables(region.env_file)
+    def remote = connectToRegion(region)
+    
+    deployWithSwarm(remote, containerDefinition.external_port, env)
+    createNotification("Deploy Region ${region.name}", "completed")
+}
 
-def removeTemporaryService(remote) {
-    def temporaryServiceName = "${containerDefinition.name}-test"
+def cleanupTemporaryService(region) {
+    def remote = connectToRegion(region)
+    removeTemporaryService(remote)
+}
 
-    // Verificar se o serviço temporário existe
-    def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${temporaryServiceName}' -q")
-
-    // Se existir, remova-o
-    if (serviceExists) {
-        sshCommand(remote: remote, command: "sudo docker service rm ${temporaryServiceName}")
+def connectToRegion(region) {
+    boolean connected = false
+    def connectedHost
+    for (host in region.manager_hosts) {
+        try {
+            def remote = buildRemote(host, region.name)
+            connectedHost = host
+            connected = true
+            break
+        } catch (com.jcraft.jsch.JSchException e) {
+            echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
+        }
     }
+    if (!connected) {
+        error "Não foi possível conectar-se a nenhum host."
+    }
+    return remote
 }
 
 
