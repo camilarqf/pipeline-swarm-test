@@ -140,6 +140,7 @@ pipeline {
                     def env = extractEnvironmentVariables(regionProd.env_file)
                     def connectedHost = ""
                     def connected = false
+                    echo "Hosts disponíveis: ${regionProd.manager_hosts}"
 
                     for (host in regionProd.manager_hosts) {
                         echo "Tentando conectar ao host: $host"
