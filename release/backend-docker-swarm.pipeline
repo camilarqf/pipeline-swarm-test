@@ -142,15 +142,19 @@ pipeline {
                     def connected = false
 
                     for (host in regionProd.manager_hosts) {
-                        try {
+                         try {
                             def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
                             removeTemporaryService(remote)
-                            deployWithSwarm(remote, containerDefinition.external_port, env) // Note: This will now overwrite the main service
+                            deployWithSwarm(remote, containerDefinition.external_port, env) 
                             connectedHost = host
                             connected = true
                             break
                         } catch (com.jcraft.jsch.JSchException e) {
-                            echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
+                            echo "JSchException ao conectar-se ao host: $host. Tentando o próximo..."
+                            echo "Erro: ${e.getMessage()}"
+                        } catch (Exception e) {
+                            echo "Exceção geral ao conectar-se ao host: $host. Tentando o próximo..."
+                            echo "Erro: ${e.getMessage()}"
                         }
                     }
 
@@ -202,11 +206,9 @@ def deployWithSwarm(remote, externalPort, env, temporary = false) {
     def volumeFlag = getVolumeFlag()
 
     if (serviceExists) {
-        // Update the existing service
         sshCommand(remote: remote, command:
             "sudo docker service update ${serviceName} --image ${imageDefinition.registry_host}/${fullImageName}")
     } else {
-        // Create a new service
         sshCommand(remote: remote, command:
             "sudo docker service create --name ${serviceName} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
     }
@@ -234,10 +236,8 @@ def getVolumeFlag() {
 def removeTemporaryService(remote) {
     def temporaryServiceName = "${containerDefinition.name}-test"
 
-    // Verificar se o serviço temporário existe
     def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${temporaryServiceName}' -q")
 
-    // Se existir, remova-o
     if (serviceExists) {
         sshCommand(remote: remote, command: "sudo docker service rm ${temporaryServiceName}")
     }
