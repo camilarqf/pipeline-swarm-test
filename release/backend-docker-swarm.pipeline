@@ -142,13 +142,15 @@ pipeline {
                     def connected = false
 
                     for (host in regionProd.manager_hosts) {
-                         try {
+                        echo "Tentando conectar ao host: $host"
+                        try {
                             def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
                             removeTemporaryService(remote)
                             deployWithSwarm(remote, containerDefinition.external_port, env) 
                             connectedHost = host
                             connected = true
-                            break
+                            echo "Conexão bem-sucedida ao host: $host"
+                            break // Se a conexão for bem-sucedida, saia do loop
                         } catch (com.jcraft.jsch.JSchException e) {
                             echo "JSchException ao conectar-se ao host: $host. Tentando o próximo..."
                             echo "Erro: ${e.getMessage()}"
