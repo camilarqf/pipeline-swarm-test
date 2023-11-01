@@ -94,16 +94,21 @@ pipeline {
                     def env = extractEnvironmentVariables(regionProd.env_file)
                     def connectedHost = ""
                     def connected = false
+                    echo "Hosts disponíveis: ${regionProd.manager_hosts}"
 
                     for (host in regionProd.manager_hosts) {
+                        echo "Tentando conectar ao host: $host"
                         try {
                             def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
-                            deployTemporaryServiceWithSwarm(remote, externalPortTemp, env)
+                            removeTemporaryService(remote)
+                            deployWithSwarm(remote, containerDefinition.external_port, env) 
                             connectedHost = host
                             connected = true
-                            break
-                        } catch (com.jcraft.jsch.JSchException e) {
-                            echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
+                            echo "Conexão bem-sucedida ao host: $host"
+                            break // Se a conexão for bem-sucedida, saia do loop
+                        } catch (Exception e) {
+                            echo "Exceção geral ao conectar-se ao host: $host. Tentando o próximo..."
+                            echo "Erro: ${e.getMessage()}"
                         }
                     }
 
@@ -152,9 +157,6 @@ pipeline {
                             connected = true
                             echo "Conexão bem-sucedida ao host: $host"
                             break // Se a conexão for bem-sucedida, saia do loop
-                        } catch (com.jcraft.jsch.JSchException e) {
-                            echo "JSchException ao conectar-se ao host: $host. Tentando o próximo..."
-                            echo "Erro: ${e.getMessage()}"
                         } catch (Exception e) {
                             echo "Exceção geral ao conectar-se ao host: $host. Tentando o próximo..."
                             echo "Erro: ${e.getMessage()}"
