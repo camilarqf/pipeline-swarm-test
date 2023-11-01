@@ -144,6 +144,7 @@ pipeline {
                     for (host in regionProd.manager_hosts) {
                         try {
                             def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
+                            removeTemporaryService(remote)
                             deployWithSwarm(remote, containerDefinition.external_port, env) // Note: This will now overwrite the main service
                             connectedHost = host
                             connected = true
@@ -162,32 +163,7 @@ pipeline {
             }
         }
 
-        stage("Cleanup") {
-            when {
-                branch mainBranch
-            }
-            environment {
-                credentials = credentials("${regionProd.credential_id}")
-            }
-            steps {
-                script {
-                    boolean connected = false
-                    for (host in regionProd.manager_hosts) {
-                        try {
-                            def remote = buildRemote(host, regionProd.name, credentials_USR, credentials_PSW)
-                            removeTemporaryService(remote)
-                            connected = true
-                            break
-                        } catch (com.jcraft.jsch.JSchException e) {
-                            echo "Falha ao conectar-se ao host: $host. Tentando o próximo..."
-                        }
-                    }
-                    if (!connected) {
-                        error "Não foi possível conectar a nenhum dos hosts."
-                    }
-                }
-            }
-        }
+        
 
     }
     post {
@@ -218,7 +194,7 @@ def deploy(remote,externalPort,env){
         "sudo docker run -d --restart unless-stopped -p ${externalPort}:${containerDefinition.internal_port} --memory ${containerDefinition.memory} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} -h=${remote.hostname} ${volumeFlag} ${env} --name ${containerDefinition.name} ${imageDefinition.registry_host}/${fullImageName}"
 }
 
-// Função adaptada para deploy com Docker Swarm
+
 def deployWithSwarm(remote, externalPort, env, temporary = false) {
     def serviceName = temporary ? "${containerDefinition.name}-test" : "${containerDefinition.name}"
     def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${serviceName}' -q")
