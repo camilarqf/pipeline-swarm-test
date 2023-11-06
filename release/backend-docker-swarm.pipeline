@@ -173,6 +173,7 @@ def tryToConnect(region, externalPort, env) {
             connectedHost = host
             connected = true
             echo "Conexão bem-sucedida ao host: $host"
+            createDeployNotification(regionProd.name, connectedHost, "completed")
             break
         } catch (Exception e) {
             echo "Exceção geral ao conectar-se ao host: $host. Tentando o próximo..."
@@ -184,7 +185,7 @@ def tryToConnect(region, externalPort, env) {
         error "Não foi possível conectar-se a nenhum host"
     }
 
-    createDeployNotification(regionProd.name, connectedHost, "completed")
+    
 }
 
 
