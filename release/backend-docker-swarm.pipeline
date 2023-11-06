@@ -92,8 +92,29 @@ pipeline {
                 script {
                     def externalPortTemp = containerDefinition.external_port + 100
                     def env = extractEnvironmentVariables(regionProd.env_file)
-                    
-                    tryToConnect(regionProd, externalPortTemp, env)
+                    def connectedHost = ""
+                    def connected = false
+                    echo "Hosts disponíveis: ${regionProd.manager_hosts}"
+
+                    for (host in regionProd.manager_hosts) {
+                        echo "Tentando conectar ao host: $host"
+                        try {
+                            def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
+                            removeTemporaryService(remote)
+                            deployWithSwarm(remote, containerDefinition.external_port, env, true) 
+                            connectedHost = host
+                            connected = true
+                            echo "Conexão bem-sucedida ao host: $host"
+                            break 
+                        } catch (Exception e) {
+                            echo "Exceção geral ao conectar-se ao host: $host. Tentando o próximo..."
+                            echo "Erro: ${e.getMessage()}"
+                        }
+                    }
+
+                    if (!connected) {
+                        error "Não foi possível conectar-se a nenhum host."
+                    }
 
                     def healthCheckUri = "http://${connectedHost}:${externalPortTemp}/${integrationDefinition.healt_check_endpoint}"
                     createHealthCheckNotification(regionProd.name, healthCheckUri)
@@ -122,9 +143,31 @@ pipeline {
             steps {
                 script {
                     def env = extractEnvironmentVariables(regionProd.env_file)
-            
-                    tryToConnect(regionProd, containerDefinition.external_port, env)
+                    def connectedHost = ""
+                    def connected = false
+                    echo "Hosts disponíveis: ${regionProd.manager_hosts}"
 
+                    for (host in regionProd.manager_hosts) {
+                        echo "Tentando conectar ao host: $host"
+                        try {
+                            def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
+                            removeTemporaryService(remote)
+                            deployWithSwarm(remote, containerDefinition.external_port, env) 
+                            connectedHost = host
+                            connected = true
+                            echo "Conexão bem-sucedida ao host: $host"
+                            break 
+                        } catch (Exception e) {
+                            echo "Exceção geral ao conectar-se ao host: $host. Tentando o próximo..."
+                            echo "Erro: ${e.getMessage()}"
+                        }
+                    }
+
+                    if (!connected) {
+                        error "Não foi possível conectar-se a nenhum host durante o Production Rollout."
+                    }
+
+                    createDeployNotification(regionProd.name, connectedHost, "completed")
                 }
             }
         }
@@ -160,35 +203,6 @@ def deploy(remote,externalPort,env){
         "sudo docker run -d --restart unless-stopped -p ${externalPort}:${containerDefinition.internal_port} --memory ${containerDefinition.memory} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} -h=${remote.hostname} ${volumeFlag} ${env} --name ${containerDefinition.name} ${imageDefinition.registry_host}/${fullImageName}"
 }
 
-def tryToConnect(region, externalPort, env) {
-    def connectedHost = ""
-    def connected = false
-
-    for (host in region.manager_hosts) {
-        echo "Tentando conectar ao host: $host"
-        try {
-            def remote = buildRemote(host, region.name, "$credentials_USR", "$credentials_PSW")
-            removeTemporaryService(remote)
-            deployWithSwarm(remote, externalPort, env)
-            connectedHost = host
-            connected = true
-            echo "Conexão bem-sucedida ao host: $host"
-            createDeployNotification(regionProd.name, connectedHost, "completed")
-            break
-        } catch (Exception e) {
-            echo "Exceção geral ao conectar-se ao host: $host. Tentando o próximo..."
-            echo "Erro: ${e.getMessage()}"
-        }
-    }
-
-    if (!connected) {
-        error "Não foi possível conectar-se a nenhum host"
-    }
-
-    
-}
-
-
 
 def deployWithSwarm(remote, externalPort, env, temporary = false) {
     def serviceName = temporary ? "${containerDefinition.name}-test" : "${containerDefinition.name}"
@@ -205,16 +219,6 @@ def deployWithSwarm(remote, externalPort, env, temporary = false) {
     }
 }
 
-def deployTemporaryServiceWithSwarm(remote, externalPort, env) {
-    def temporaryServiceName = "${containerDefinition.name}-test"
-    def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${temporaryServiceName}' -q")
-
-    if (serviceExists) {
-        sshCommand(remote: remote, command: "sudo docker service rm ${temporaryServiceName}")
-    }
-
-    deployWithSwarm(remote, externalPort, env, true)
-}
 
 def getVolumeFlag() {
     if (containerDefinition.volume) {
