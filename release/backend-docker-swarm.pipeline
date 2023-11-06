@@ -172,6 +172,7 @@ def tryToConnect(region, externalPort, env) {
             removeTemporaryService(remote)
             deployWithSwarm(remote, externalPort, env)
             connectedHost = host
+            connected = true
             echo "Conexão bem-sucedida ao host: $host"
             break
         } catch (Exception e) {
