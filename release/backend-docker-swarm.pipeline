@@ -125,7 +125,6 @@ pipeline {
             
                     tryToConnect(regionProd, containerDefinition.external_port, env)
 
-                    createDeployNotification(regionProd.name, connectedHost, "completed")
                 }
             }
         }
@@ -185,7 +184,7 @@ def tryToConnect(region, externalPort, env) {
         error "Não foi possível conectar-se a nenhum host"
     }
 
-    return connectedHost
+    createDeployNotification(regionProd.name, connectedHost, "completed")
 }
 
 
