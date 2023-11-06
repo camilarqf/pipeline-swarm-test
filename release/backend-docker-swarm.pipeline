@@ -170,7 +170,7 @@ def tryToConnect(region, externalPort, env) {
         try {
             def remote = buildRemote(host, region.name, "$credentials_USR", "$credentials_PSW")
             removeTemporaryService(remote)
-            deployWithSwarm(remote, externalPort, extractEnvironmentVariables(env))
+            deployWithSwarm(remote, externalPort, env)
             connectedHost = host
             echo "Conexão bem-sucedida ao host: $host"
             break
