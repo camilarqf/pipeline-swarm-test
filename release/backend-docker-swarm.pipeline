@@ -91,6 +91,7 @@ pipeline {
             steps {
                 script {
                     def externalPortTemp = containerDefinition.external_port + 100
+                    def env = extractEnvironmentVariables(regionProd.env_file)
                     
                     tryToConnect(regionProd, externalPortTemp, env)
 
