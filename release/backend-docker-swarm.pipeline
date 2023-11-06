@@ -88,11 +88,11 @@ pipeline {
                         try {
                             def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
                             removeTemporaryService(remote)
-                            deployWithSwarm(remote, containerDefinition.external_port, env) 
+                            deployWithSwarm(remote, externalPortTemp, env) 
                             connectedHost = host
                             connected = true
                             echo "Conexão bem-sucedida ao host: $host"
-                            break // Se a conexão for bem-sucedida, saia do loop
+                            break 
                         } catch (Exception e) {
                             echo "Exceção geral ao conectar-se ao host: $host. Tentando o próximo..."
                             echo "Erro: ${e.getMessage()}"
@@ -198,7 +198,7 @@ def deployTemporaryServiceWithSwarm(remote, externalPort, env) {
 }
 def getVolumeFlag() {
     if (containerDefinition.volume) {
-         return "--mount type=volume,source=${containerDefinition.volume},target=${containerDefinition.volume}"
+         return "--mount type=bind,source=${containerDefinition.volume},target=${containerDefinition.volume}"
     }
     return ""
 }
