@@ -68,7 +68,7 @@ pipeline {
                 }
             }
         }
-        stage("Temporary Production Deployment") {
+        stage("Deploy Green - Test Deployment") {
             when {
                 branch mainBranch
             }
@@ -107,7 +107,7 @@ pipeline {
                 }
             }
         }
-        stage("Validate Temporary Service") {
+        stage("Validate Green Deployment") {
             when {
                 branch mainBranch
             }
@@ -117,7 +117,7 @@ pipeline {
                 }
             }
         }
-        stage("Production Rollout") {
+        stage("Deploy Blue - Production Rollout") {
             when {
                 branch mainBranch
             }
