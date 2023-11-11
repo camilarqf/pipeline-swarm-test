@@ -77,6 +77,7 @@ pipeline {
             }
             steps {
                 script {
+                    input message: "Start deploy ${regionProd.name}', ok: 'Confirm!"
                     def externalPortTemp = containerDefinition.external_port + 100
                     def env = extractEnvironmentVariables(regionProd.env_file)
                     def connectedHost = ""
@@ -179,13 +180,14 @@ def deploy(remote,externalPort,env){
 def deployWithSwarm(remote, externalPort, env, temporary = false) {
     def serviceName = temporary ? "${containerDefinition.name}-test" : "${containerDefinition.name}"
     def serviceExists = sshCommand(remote: remote, command: "sudo docker service ls --filter 'name=${serviceName}' -q")
+    def hostname = "${containerDefinition.name}-${buildId}"
     def volumeFlag = getVolumeFlag()
     if (serviceExists) {
         sshCommand(remote: remote, command:
             "sudo docker service update ${serviceName} --image ${imageDefinition.registry_host}/${fullImageName}")
     } else {
         sshCommand(remote: remote, command:
-            "sudo docker service create --name ${serviceName} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+            "sudo docker service create --name ${serviceName} --hostname ${hostname} --limit-memory ${containerDefinition.memory} --publish published=${externalPort},target=${containerDefinition.internal_port} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} --replicas ${containerDefinition.replicas}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
     }
 }
 def deployTemporaryServiceWithSwarm(remote, externalPort, env) {
