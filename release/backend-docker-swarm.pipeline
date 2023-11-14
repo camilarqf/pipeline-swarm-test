@@ -87,13 +87,14 @@ pipeline {
                     for (host in regionProd.manager_hosts) {
                         echo "Tentando conectar ao host: $host"
                         try {
+                            connectedHost = host
+                            connected = true
+                            createDeployNotification(regionProd.name, connectedHost, "iniciado")
                             def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
                             removeTemporaryService(remote)
                             deployWithSwarm(remote, externalPortTemp, env, true) 
-                            connectedHost = host
-                            connected = true
                             echo "Conexão bem-sucedida ao host: $host"
-                            break 
+                            break  
                         } catch (Exception e) {
                             echo "Exceção geral ao conectar-se ao host: $host. Tentando o próximo..."
                             echo "Erro: ${e.getMessage()}"
@@ -134,13 +135,13 @@ pipeline {
                     for (host in regionProd.manager_hosts) {
                         echo "Tentando conectar ao host: $host"
                         try {
-                            def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
-                            removeTemporaryService(remote)
-                            deployWithSwarm(remote, containerDefinition.external_port, env) 
                             connectedHost = host
                             connected = true
+                            def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
+                            removeTemporaryService(remote)
+                            deployWithSwarm(remote, containerDefinition.external_port, env)                           
                             echo "Conexão bem-sucedida ao host: $host"
-                            break 
+                            break  
                         } catch (Exception e) {
                             echo "Exceção geral ao conectar-se ao host: $host. Tentando o próximo..."
                             echo "Erro: ${e.getMessage()}"
@@ -149,7 +150,7 @@ pipeline {
                     if (!connected) {
                         error "Não foi possível conectar-se a nenhum host durante o Production Rollout."
                     }
-                    createDeployNotification(regionProd.name, connectedHost, "completed")
+                    createDeployNotification(regionProd.name, connectedHost, "finalizado")
                 }
             }
         }
