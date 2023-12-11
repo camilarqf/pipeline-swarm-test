@@ -188,7 +188,7 @@ def deployWithSwarm(remote, externalPort, env, temporary = false) {
             "sudo docker service update ${serviceName} --image ${imageDefinition.registry_host}/${fullImageName}")
     } else {
         sshCommand(remote: remote, command:
-            "sudo docker service create --name ${serviceName} --hostname ${hostname} --limit-cpu ${containerDefinition.cpu} --limit-memory ${containerDefinition.memory} --publish published=${externalPort},target=${containerDefinition.internal_port} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} --replicas ${containerDefinition.replicas}  ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+            "sudo docker service create --name ${serviceName} --network ${network} --hostname ${hostname} --limit-cpu ${containerDefinition.cpu} --limit-memory ${containerDefinition.memory} --publish published=${externalPort},target=${containerDefinition.internal_port} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} --replicas ${containerDefinition.replicas} --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
     }
 }
 def deployTemporaryServiceWithSwarm(remote, externalPort, env) {
