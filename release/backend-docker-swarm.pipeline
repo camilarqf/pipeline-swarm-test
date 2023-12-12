@@ -88,11 +88,11 @@ pipeline {
                         echo "Tentando conectar ao host: $host"
                         try {
                             connectedHost = host
-                            connected = true
                             createDeployNotification(regionProd.name, connectedHost, "iniciado")
                             def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
                             removeTemporaryService(remote)
                             deployWithSwarm(remote, externalPortTemp, env, true) 
+                            connected = true
                             echo "Conexão bem-sucedida ao host: $host"
                             break  
                         } catch (Exception e) {
@@ -136,10 +136,10 @@ pipeline {
                         echo "Tentando conectar ao host: $host"
                         try {
                             connectedHost = host
-                            connected = true
                             def remote = buildRemote(host, regionProd.name, "$credentials_USR", "$credentials_PSW")
                             removeTemporaryService(remote)
-                            deployWithSwarm(remote, containerDefinition.external_port, env)                           
+                            deployWithSwarm(remote, containerDefinition.external_port, env) 
+                            connected = true
                             echo "Conexão bem-sucedida ao host: $host"
                             break  
                         } catch (Exception e) {
@@ -188,7 +188,7 @@ def deployWithSwarm(remote, externalPort, env, temporary = false) {
             "sudo docker service update ${serviceName} --image ${imageDefinition.registry_host}/${fullImageName}")
     } else {
         sshCommand(remote: remote, command:
-            "sudo docker service create --name ${serviceName} --network ${containerDefinition.network} --hostname ${hostname} --limit-cpu ${containerDefinition.cpu} --limit-memory ${containerDefinition.memory} --publish published=${externalPort},target=${containerDefinition.internal_port} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} --replicas ${containerDefinition.replicas} --constraint 'node.role==worker' ${volumeFlag} ${env} ${imageDefinition.registry_host}/${fullImageName}")
+            "sudo docker service create --name ${serviceName} --network ${containerDefinition.network} --limit-memory ${containerDefinition.memory} --limit-cpu ${containerDefinition.cpu} --publish published=${externalPort},target=${containerDefinition.internal_port} --replicas ${containerDefinition.replicas} --constraint 'node.role==worker'  ${volumeFlag} ${env} --hostname ${hostname} ${imageDefinition.registry_host}/${fullImageName}")
     }
 }
 def deployTemporaryServiceWithSwarm(remote, externalPort, env) {
