@@ -176,7 +176,7 @@ def deploy(remote,externalPort,env){
     if(containerDefinition.volume){
          volumeFlag="-v ${containerDefinition.volume}:${containerDefinition.volume}"}
     sshCommand remote: remote, command: 
-        "sudo docker run -d --restart unless-stopped -p ${externalPort}:${containerDefinition.internal_port} --memory ${containerDefinition.memory} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} -h=${remote.hostname} ${volumeFlag} ${env} --name ${containerDefinition.name} ${imageDefinition.registry_host}/${fullImageName}"
+        "sudo docker run -d --restart unless-stopped -p ${externalPort}:${containerDefinition.internal_port} --network ${containerDefinition.network} --memory ${containerDefinition.memory} --log-opt max-size=${containerDefinition.log_max_size} --log-opt max-file=${containerDefinition.log_max_file} -h=${remote.hostname} ${volumeFlag} ${env} --name ${containerDefinition.name} ${imageDefinition.registry_host}/${fullImageName}"
 }
 def deployWithSwarm(remote, externalPort, env, temporary = false) {
     def serviceName = temporary ? "${containerDefinition.name}-test" : "${containerDefinition.name}"
